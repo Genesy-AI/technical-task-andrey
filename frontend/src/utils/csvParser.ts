@@ -1,4 +1,5 @@
 import Papa from 'papaparse'
+import { normalizeCountryCode } from './countryCodes'
 
 export interface CsvLead {
   firstName: string
@@ -9,6 +10,7 @@ export interface CsvLead {
   companyName?: string
   isValid: boolean
   errors: string[]
+  warnings: string[]
   rowIndex: number
 }
 
@@ -49,6 +51,7 @@ export const parseCsv = (content: string): CsvLead[] => {
     if (Object.values(row).every((value) => !value)) return
 
     const lead: Partial<CsvLead> = { rowIndex: index + 2 }
+    let rawCountryCode = ''
 
     Object.entries(row).forEach(([header, value]) => {
       const normalizedHeader = header.toLowerCase().replace(/[^a-z]/g, '')
@@ -68,7 +71,8 @@ export const parseCsv = (content: string): CsvLead[] => {
           lead.jobTitle = trimmedValue || undefined
           break
         case 'countrycode':
-          lead.countryCode = trimmedValue || undefined
+          rawCountryCode = trimmedValue
+          lead.countryCode = normalizeCountryCode(trimmedValue) ?? undefined
           break
         case 'companyname':
           lead.companyName = trimmedValue || undefined
@@ -89,6 +93,13 @@ export const parseCsv = (content: string): CsvLead[] => {
       errors.push('Invalid email format')
     }
 
+    // A bad country code is not worth discarding an otherwise good lead, so it is reported as a
+    // warning and the field is left empty rather than importing an unusable value.
+    const warnings: string[] = []
+    if (rawCountryCode && !lead.countryCode) {
+      warnings.push(`"${rawCountryCode}" is not a valid country code and will be left empty`)
+    }
+
     data.push({
       ...lead,
       firstName: lead.firstName || '',
@@ -96,6 +107,7 @@ export const parseCsv = (content: string): CsvLead[] => {
       email: lead.email || '',
       isValid: errors.length === 0,
       errors,
+      warnings,
     } as CsvLead)
   })
 

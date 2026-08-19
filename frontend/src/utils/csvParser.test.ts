@@ -66,6 +66,7 @@ John,Doe,john.doe@example.com,Developer,US,Tech Corp`
       companyName: 'Tech Corp',
       isValid: true,
       errors: [],
+      warnings: [],
       rowIndex: 2,
     })
   })
@@ -222,5 +223,47 @@ Jane,Johnson,jane@example.com`
     expect(result[0].lastName).toBe('Doe')
     expect(result[0].email).toBe('john@example.com')
     expect(result[0].isValid).toBe(true)
+  })
+
+  describe('country codes', () => {
+    const csvWithCountry = (countryCode: string) =>
+      `firstName,lastName,email,countryCode\nJohn,Doe,john@example.com,${countryCode}`
+
+    it('should uppercase valid codes', () => {
+      const result = parseCsv(csvWithCountry('es'))
+
+      expect(result[0].countryCode).toBe('ES')
+      expect(result[0].warnings).toEqual([])
+      expect(result[0].isValid).toBe(true)
+    })
+
+    it('should drop unrecognized codes and warn without invalidating the lead', () => {
+      const result = parseCsv(csvWithCountry('XXX'))
+
+      expect(result[0].countryCode).toBeUndefined()
+      expect(result[0].isValid).toBe(true)
+      expect(result[0].warnings).toEqual(['"XXX" is not a valid country code and will be left empty'])
+    })
+
+    it('should drop numeric codes', () => {
+      const result = parseCsv(csvWithCountry('12'))
+
+      expect(result[0].countryCode).toBeUndefined()
+      expect(result[0].warnings).toHaveLength(1)
+    })
+
+    it('should not warn when the country code is simply absent', () => {
+      const result = parseCsv(csvWithCountry(''))
+
+      expect(result[0].countryCode).toBeUndefined()
+      expect(result[0].warnings).toEqual([])
+    })
+
+    it('should accept UK as an alias of GB', () => {
+      const result = parseCsv(csvWithCountry('UK'))
+
+      expect(result[0].countryCode).toBe('GB')
+      expect(result[0].warnings).toEqual([])
+    })
   })
 })
