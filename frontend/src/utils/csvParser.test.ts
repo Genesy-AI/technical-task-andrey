@@ -74,21 +74,17 @@ John,Doe,john.doe@example.com,Developer,US,Tech Corp`
   it('should handle missing required fields and mark as invalid', () => {
     const csv = `firstName,lastName,email
 ,Smith,john@example.com
-John,,john@example.com
 John,Smith,`
 
     const result = parseCsv(csv)
 
-    expect(result).toHaveLength(3)
+    expect(result).toHaveLength(2)
 
     expect(result[0].isValid).toBe(false)
     expect(result[0].errors).toContain('First name is required')
 
     expect(result[1].isValid).toBe(false)
-    expect(result[1].errors).toContain('Last name is required')
-
-    expect(result[2].isValid).toBe(false)
-    expect(result[2].errors).toContain('Email is required')
+    expect(result[1].errors).toContain('Email is required')
   })
 
   it('should validate email format', () => {
@@ -177,9 +173,8 @@ Bob,Johnson,bob@example.com`
 
     expect(result).toHaveLength(1)
     expect(result[0].isValid).toBe(false)
-    expect(result[0].errors).toHaveLength(3)
+    expect(result[0].errors).toHaveLength(2)
     expect(result[0].errors).toContain('First name is required')
-    expect(result[0].errors).toContain('Last name is required')
     expect(result[0].errors).toContain('Invalid email format')
   })
 
@@ -223,6 +218,41 @@ Jane,Johnson,jane@example.com`
     expect(result[0].lastName).toBe('Doe')
     expect(result[0].email).toBe('john@example.com')
     expect(result[0].isValid).toBe(true)
+  })
+
+  describe('missing last name', () => {
+    it('should import a lead that has a first name and a valid email', () => {
+      const csv = `firstName,lastName,email
+Micheal,,ewelch@yahoo.com`
+
+      const result = parseCsv(csv)
+
+      expect(result[0].isValid).toBe(true)
+      expect(result[0].lastName).toBe('')
+      expect(result[0].errors).toEqual([])
+      expect(result[0].warnings).toEqual([
+        'No last name — templates using {lastName} will skip this lead',
+      ])
+    })
+
+    it('should still reject a lead that is missing a last name and a usable email', () => {
+      const csv = `firstName,lastName,email
+Raymond,,invalid email`
+
+      const result = parseCsv(csv)
+
+      expect(result[0].isValid).toBe(false)
+      expect(result[0].errors).toContain('Invalid email format')
+    })
+
+    it('should not warn when a last name is present', () => {
+      const csv = `firstName,lastName,email
+Meghan,Williams,michael04@jones-marshall.com`
+
+      const result = parseCsv(csv)
+
+      expect(result[0].warnings).toEqual([])
+    })
   })
 
   describe('country codes', () => {

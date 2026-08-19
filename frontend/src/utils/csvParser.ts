@@ -80,12 +80,11 @@ export const parseCsv = (content: string): CsvLead[] => {
       }
     })
 
+    // Only a first name and a reachable email make a lead usable for outreach. Everything else is
+    // reported as a warning so an incomplete row still gets imported instead of being discarded.
     const errors: string[] = []
     if (!lead.firstName?.trim()) {
       errors.push('First name is required')
-    }
-    if (!lead.lastName?.trim()) {
-      errors.push('Last name is required')
     }
     if (!lead.email?.trim()) {
       errors.push('Email is required')
@@ -93,9 +92,10 @@ export const parseCsv = (content: string): CsvLead[] => {
       errors.push('Invalid email format')
     }
 
-    // A bad country code is not worth discarding an otherwise good lead, so it is reported as a
-    // warning and the field is left empty rather than importing an unusable value.
     const warnings: string[] = []
+    if (!lead.lastName?.trim()) {
+      warnings.push('No last name — templates using {lastName} will skip this lead')
+    }
     if (rawCountryCode && !lead.countryCode) {
       warnings.push(`"${rawCountryCode}" is not a valid country code and will be left empty`)
     }

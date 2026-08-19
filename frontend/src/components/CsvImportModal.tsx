@@ -21,9 +21,11 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
     const validLeads = csvData.filter((lead) => lead.isValid)
     const invalidLeads = csvData.filter((lead) => !lead.isValid)
 
+    // Matches the server: email identifies a lead, so two rows sharing one are the same person even
+    // when the names differ.
     const duplicateGroups = new Map<string, CsvLead[]>()
     validLeads.forEach((lead) => {
-      const key = `${lead.firstName.toLowerCase()}_${(lead.lastName || '').toLowerCase()}`
+      const key = lead.email.trim().toLowerCase()
       if (!duplicateGroups.has(key)) {
         duplicateGroups.set(key, [])
       }
@@ -96,7 +98,7 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
 
       const leadsToImport = validLeads.map((lead) => ({
         firstName: lead.firstName,
-        lastName: lead.lastName,
+        lastName: lead.lastName || undefined,
         email: lead.email,
         jobTitle: lead.jobTitle || undefined,
         countryCode: lead.countryCode || undefined,

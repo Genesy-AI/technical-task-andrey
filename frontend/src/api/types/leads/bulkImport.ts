@@ -1,7 +1,7 @@
 export interface LeadsBulkImportInput {
   leads: {
     firstName: string
-    lastName: string
+    lastName?: string
     email: string
     jobTitle?: string
     countryCode?: string

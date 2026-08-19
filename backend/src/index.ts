@@ -9,6 +9,12 @@ const prisma = new PrismaClient()
 const app = express()
 app.use(express.json())
 
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0
+
+const formatLeadName = (lead: { firstName: string; lastName?: string | null }) =>
+  `${lead.firstName} ${lead.lastName ?? ''}`.trim()
+
 app.use(function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*')
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
@@ -25,14 +31,14 @@ app.use(function (req, res, next) {
 app.post('/leads', async (req: Request, res: Response) => {
   const { name, lastName, email } = req.body
 
-  if (!name || !lastName || !email) {
-    return res.status(400).json({ error: 'firstName, lastName, and email are required' })
+  if (!name || !email) {
+    return res.status(400).json({ error: 'firstName and email are required' })
   }
 
   const lead = await prisma.lead.create({
     data: {
       firstName: String(name),
-      lastName: String(lastName),
+      lastName: lastName ? String(lastName) : null,
       email: String(email),
     },
   })
@@ -151,7 +157,7 @@ app.post('/leads/generate-messages', async (req: Request, res: Response) => {
       } catch (error) {
         errors.push({
           leadId: lead.id,
-          leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+          leadName: formatLeadName(lead),
           error: error instanceof Error ? error.message : 'Unknown error',
         })
       }
@@ -180,41 +186,28 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
   }
 
   try {
-    const validLeads = leads.filter((lead) => {
-      return (
-        lead.firstName &&
-        lead.lastName &&
-        lead.email &&
-        typeof lead.firstName === 'string' &&
-        lead.firstName.trim() &&
-        typeof lead.lastName === 'string' &&
-        lead.lastName.trim() &&
-        typeof lead.email === 'string' &&
-        lead.email.trim()
-      )
-    })
-
-    if (validLeads.length === 0) {
-      return res
-        .status(400)
-        .json({ error: 'No valid leads found. firstName, lastName, and email are required.' })
-    }
-
-    const existingLeads = await prisma.lead.findMany({
-      where: {
-        OR: validLeads.map((lead) => ({
-          AND: [{ firstName: lead.firstName.trim() }, { lastName: lead.lastName.trim() }],
-        })),
-      },
-    })
-
-    const leadKeys = new Set(
-      existingLeads.map((lead) => `${lead.firstName.toLowerCase()}_${(lead.lastName || '').toLowerCase()}`)
+    const validLeads = leads.filter(
+      (lead) => isNonEmptyString(lead.firstName) && isNonEmptyString(lead.email)
     )
 
+    if (validLeads.length === 0) {
+      return res.status(400).json({ error: 'No valid leads found. firstName and email are required.' })
+    }
+
+    // Email identifies a lead. Names are often partial or inconsistently spelled, and keying on them
+    // collapses distinct people who share a first name and have no surname. Comparison is done in
+    // memory because SQLite cannot express a case-insensitive `in` filter through Prisma.
+    const existingEmails = new Set(
+      (await prisma.lead.findMany({ select: { email: true } })).map((lead) => lead.email.toLowerCase())
+    )
+
+    const seenEmails = new Set<string>()
     const uniqueLeads = validLeads.filter((lead) => {
-      const key = `${lead.firstName.toLowerCase()}_${lead.lastName.toLowerCase()}`
-      return !leadKeys.has(key)
+      const email = lead.email.trim().toLowerCase()
+      if (existingEmails.has(email) || seenEmails.has(email)) return false
+
+      seenEmails.add(email)
+      return true
     })
 
     let importedCount = 0
@@ -225,7 +218,7 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
         await prisma.lead.create({
           data: {
             firstName: lead.firstName.trim(),
-            lastName: lead.lastName.trim(),
+            lastName: isNonEmptyString(lead.lastName) ? lead.lastName.trim() : null,
             email: lead.email.trim(),
             jobTitle: lead.jobTitle ? lead.jobTitle.trim() : null,
             countryCode: normalizeCountryCode(lead.countryCode),
@@ -299,7 +292,7 @@ app.post('/leads/verify-emails', async (req: Request, res: Response) => {
       } catch (error) {
         errors.push({
           leadId: lead.id,
-          leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+          leadName: formatLeadName(lead),
           error: error instanceof Error ? error.message : 'Unknown error',
         })
       }
