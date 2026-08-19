@@ -1,9 +1,9 @@
 import { PrismaClient } from '@prisma/client'
 import express, { Request, Response } from 'express'
-import { Connection, Client } from '@temporalio/client'
 import { verifyEmailWorkflow } from './workflows'
 import { generateMessageFromTemplate } from './utils/messageGenerator'
 import { normalizeCountryCode } from './utils/countryCodes'
+import { getTemporalClient, TEMPORAL_TASK_QUEUE } from './temporalClient'
 import { runTemporalWorker } from './worker'
 const prisma = new PrismaClient()
 const app = express()
@@ -267,40 +267,47 @@ app.post('/leads/verify-emails', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No leads found with the provided IDs' })
     }
 
-    const connection = await Connection.connect({ address: 'localhost:7233' })
-    const client = new Client({ connection, namespace: 'default' })
+    const client = await getTemporalClient()
 
-    let verifiedCount = 0
-    const results: Array<{ leadId: number; emailVerified: boolean }> = []
-    const errors: Array<{ leadId: number; leadName: string; error: string }> = []
-
-    for (const lead of leads) {
-      try {
-        const isVerified = await client.workflow.execute(verifyEmailWorkflow, {
-          taskQueue: 'myQueue',
-          workflowId: `verify-email-${lead.id}-${Date.now()}`,
+    const outcomes = await Promise.allSettled(
+      leads.map(async (lead) => {
+        const emailVerified = await client.workflow.execute(verifyEmailWorkflow, {
+          taskQueue: TEMPORAL_TASK_QUEUE,
+          // One workflow per lead: a repeated request joins the run in flight
+          // instead of starting a duplicate.
+          workflowId: `verify-email-${lead.id}`,
+          workflowIdConflictPolicy: 'USE_EXISTING',
+          workflowExecutionTimeout: '2 minutes',
           args: [lead.email],
         })
 
         await prisma.lead.update({
           where: { id: lead.id },
-          data: { emailVerified: Boolean(isVerified) },
+          data: { emailVerified },
         })
 
-        results.push({ leadId: lead.id, emailVerified: isVerified })
-        verifiedCount += 1
-      } catch (error) {
+        return emailVerified
+      })
+    )
+
+    const results: Array<{ leadId: number; emailVerified: boolean }> = []
+    const errors: Array<{ leadId: number; leadName: string; error: string }> = []
+
+    outcomes.forEach((outcome, index) => {
+      const lead = leads[index]
+
+      if (outcome.status === 'fulfilled') {
+        results.push({ leadId: lead.id, emailVerified: outcome.value })
+      } else {
         errors.push({
           leadId: lead.id,
           leadName: formatLeadName(lead),
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: outcome.reason instanceof Error ? outcome.reason.message : 'Unknown error',
         })
       }
-    }
+    })
 
-    await connection.close()
-
-    res.json({ success: true, verifiedCount, results, errors })
+    res.json({ success: true, verifiedCount: results.length, results, errors })
   } catch (error) {
     console.error('Error verifying emails:', error)
     res.status(500).json({ error: 'Failed to verify emails' })
