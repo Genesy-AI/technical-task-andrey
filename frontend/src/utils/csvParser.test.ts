@@ -66,6 +66,7 @@ John,Doe,john.doe@example.com,Developer,US,Tech Corp`
       companyName: 'Tech Corp',
       isValid: true,
       errors: [],
+      warnings: [],
       rowIndex: 2,
     })
   })
@@ -73,21 +74,17 @@ John,Doe,john.doe@example.com,Developer,US,Tech Corp`
   it('should handle missing required fields and mark as invalid', () => {
     const csv = `firstName,lastName,email
 ,Smith,john@example.com
-John,,john@example.com
 John,Smith,`
 
     const result = parseCsv(csv)
 
-    expect(result).toHaveLength(3)
+    expect(result).toHaveLength(2)
 
     expect(result[0].isValid).toBe(false)
     expect(result[0].errors).toContain('First name is required')
 
     expect(result[1].isValid).toBe(false)
-    expect(result[1].errors).toContain('Last name is required')
-
-    expect(result[2].isValid).toBe(false)
-    expect(result[2].errors).toContain('Email is required')
+    expect(result[1].errors).toContain('Email is required')
   })
 
   it('should validate email format', () => {
@@ -176,9 +173,8 @@ Bob,Johnson,bob@example.com`
 
     expect(result).toHaveLength(1)
     expect(result[0].isValid).toBe(false)
-    expect(result[0].errors).toHaveLength(3)
+    expect(result[0].errors).toHaveLength(2)
     expect(result[0].errors).toContain('First name is required')
-    expect(result[0].errors).toContain('Last name is required')
     expect(result[0].errors).toContain('Invalid email format')
   })
 
@@ -222,5 +218,82 @@ Jane,Johnson,jane@example.com`
     expect(result[0].lastName).toBe('Doe')
     expect(result[0].email).toBe('john@example.com')
     expect(result[0].isValid).toBe(true)
+  })
+
+  describe('missing last name', () => {
+    it('should import a lead that has a first name and a valid email', () => {
+      const csv = `firstName,lastName,email
+Micheal,,ewelch@yahoo.com`
+
+      const result = parseCsv(csv)
+
+      expect(result[0].isValid).toBe(true)
+      expect(result[0].lastName).toBe('')
+      expect(result[0].errors).toEqual([])
+      expect(result[0].warnings).toEqual([
+        'No last name — templates using {lastName} will skip this lead',
+      ])
+    })
+
+    it('should still reject a lead that is missing a last name and a usable email', () => {
+      const csv = `firstName,lastName,email
+Raymond,,invalid email`
+
+      const result = parseCsv(csv)
+
+      expect(result[0].isValid).toBe(false)
+      expect(result[0].errors).toContain('Invalid email format')
+    })
+
+    it('should not warn when a last name is present', () => {
+      const csv = `firstName,lastName,email
+Meghan,Williams,michael04@jones-marshall.com`
+
+      const result = parseCsv(csv)
+
+      expect(result[0].warnings).toEqual([])
+    })
+  })
+
+  describe('country codes', () => {
+    const csvWithCountry = (countryCode: string) =>
+      `firstName,lastName,email,countryCode\nJohn,Doe,john@example.com,${countryCode}`
+
+    it('should uppercase valid codes', () => {
+      const result = parseCsv(csvWithCountry('es'))
+
+      expect(result[0].countryCode).toBe('ES')
+      expect(result[0].warnings).toEqual([])
+      expect(result[0].isValid).toBe(true)
+    })
+
+    it('should drop unrecognized codes and warn without invalidating the lead', () => {
+      const result = parseCsv(csvWithCountry('XXX'))
+
+      expect(result[0].countryCode).toBeUndefined()
+      expect(result[0].isValid).toBe(true)
+      expect(result[0].warnings).toEqual(['"XXX" is not a valid country code and will be left empty'])
+    })
+
+    it('should drop numeric codes', () => {
+      const result = parseCsv(csvWithCountry('12'))
+
+      expect(result[0].countryCode).toBeUndefined()
+      expect(result[0].warnings).toHaveLength(1)
+    })
+
+    it('should not warn when the country code is simply absent', () => {
+      const result = parseCsv(csvWithCountry(''))
+
+      expect(result[0].countryCode).toBeUndefined()
+      expect(result[0].warnings).toEqual([])
+    })
+
+    it('should accept UK as an alias of GB', () => {
+      const result = parseCsv(csvWithCountry('UK'))
+
+      expect(result[0].countryCode).toBe('GB')
+      expect(result[0].warnings).toEqual([])
+    })
   })
 })

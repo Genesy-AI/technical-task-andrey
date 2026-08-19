@@ -4,6 +4,28 @@ import toast from 'react-hot-toast'
 import { api } from '../api'
 import { MessageTemplateModal } from './MessageTemplateModal'
 import { CsvImportModal } from './CsvImportModal'
+import { getCountryName, normalizeCountryCode } from '../utils/countryCodes'
+
+// Rows imported before country codes were validated can still hold arbitrary values, so anything
+// unrecognized is shown as plain flagged text rather than being formatted as a real country.
+const CountryCell: FC<{ code: string | null }> = ({ code }) => {
+  if (!code) return <div className="text-sm text-gray-900">-</div>
+
+  const normalized = normalizeCountryCode(code)
+  if (!normalized) {
+    return (
+      <div className="text-sm text-amber-700" title={`"${code}" is not a valid ISO country code`}>
+        {code} ⚠️
+      </div>
+    )
+  }
+
+  return (
+    <div className="text-sm text-gray-900" title={getCountryName(normalized)}>
+      {normalized}
+    </div>
+  )
+}
 
 export const LeadsList: FC = () => {
   const [selectedLeads, setSelectedLeads] = useState<number[]>([])
@@ -273,7 +295,7 @@ export const LeadsList: FC = () => {
                     <div className="text-sm text-gray-900">{lead.companyName || '-'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{lead.countryCode || '-'}</div>
+                    <CountryCell code={lead.countryCode} />
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900 max-w-xs truncate" title={lead.message || ''}>

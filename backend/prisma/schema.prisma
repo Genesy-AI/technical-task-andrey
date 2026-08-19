@@ -12,7 +12,7 @@ model lead {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   firstName   String
-  lastName    String
+  lastName    String?
   email       String
   jobTitle    String?
   countryCode String?

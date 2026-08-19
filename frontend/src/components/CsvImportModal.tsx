@@ -21,9 +21,11 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
     const validLeads = csvData.filter((lead) => lead.isValid)
     const invalidLeads = csvData.filter((lead) => !lead.isValid)
 
+    // Matches the server: email identifies a lead, so two rows sharing one are the same person even
+    // when the names differ.
     const duplicateGroups = new Map<string, CsvLead[]>()
     validLeads.forEach((lead) => {
-      const key = `${lead.firstName.toLowerCase()}_${(lead.lastName || '').toLowerCase()}`
+      const key = lead.email.trim().toLowerCase()
       if (!duplicateGroups.has(key)) {
         duplicateGroups.set(key, [])
       }
@@ -39,6 +41,7 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
       valid: validLeads.length,
       invalid: invalidLeads.length,
       duplicatesInCsv: duplicatesInCsv.length,
+      withWarnings: csvData.filter((lead) => lead.warnings.length > 0).length,
     }
   }, [csvData])
 
@@ -95,7 +98,7 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
 
       const leadsToImport = validLeads.map((lead) => ({
         firstName: lead.firstName,
-        lastName: lead.lastName,
+        lastName: lead.lastName || undefined,
         email: lead.email,
         jobTitle: lead.jobTitle || undefined,
         countryCode: lead.countryCode || undefined,
@@ -247,7 +250,7 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
             <div className="space-y-4">
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="text-sm font-medium text-gray-900 mb-3">Import Summary</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="bg-white rounded p-3 text-center">
                     <div className="text-lg font-semibold text-gray-900">{stats.total}</div>
                     <div className="text-xs text-gray-500">Total Rows</div>
@@ -263,6 +266,10 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                   <div className="bg-white rounded p-3 text-center">
                     <div className="text-lg font-semibold text-yellow-600">{stats.duplicatesInCsv}</div>
                     <div className="text-xs text-gray-500">Duplicates in CSV</div>
+                  </div>
+                  <div className="bg-white rounded p-3 text-center">
+                    <div className="text-lg font-semibold text-amber-600">{stats.withWarnings}</div>
+                    <div className="text-xs text-gray-500">With Warnings</div>
                   </div>
                 </div>
               </div>
@@ -285,13 +292,21 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                         Company
                       </th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                        Errors
+                        Country
+                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        Issues
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {csvData.map((lead, index) => (
-                      <tr key={index} className={lead.isValid ? 'bg-white' : 'bg-red-50'}>
+                      <tr
+                        key={index}
+                        className={
+                          !lead.isValid ? 'bg-red-50' : lead.warnings.length > 0 ? 'bg-amber-50' : 'bg-white'
+                        }
+                      >
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.rowIndex - 1}</td>
                         <td className="px-3 py-2">
                           {lead.isValid ? (
@@ -309,7 +324,18 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.email || '-'}</td>
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.companyName || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-red-600">{lead.errors.join(', ') || '-'}</td>
+                        <td className="px-3 py-2 text-sm text-gray-900">{lead.countryCode || '-'}</td>
+                        <td className="px-3 py-2 text-sm">
+                          {lead.errors.length > 0 && (
+                            <div className="text-red-600">{lead.errors.join(', ')}</div>
+                          )}
+                          {lead.warnings.length > 0 && (
+                            <div className="text-amber-700">{lead.warnings.join(', ')}</div>
+                          )}
+                          {lead.errors.length === 0 && lead.warnings.length === 0 && (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
